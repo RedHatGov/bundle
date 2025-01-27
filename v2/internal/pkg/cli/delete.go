@@ -44,26 +44,8 @@ type DeleteSchema struct {
 
 // NewDeleteCommand - setup all the relevant support structs
 // to eventually execute the 'delete' sub command
-func NewDeleteCommand(log clog.PluggableLoggerInterface) *cobra.Command {
-
-	global := &mirror.GlobalOptions{
-		SecurePolicy: false,
-	}
-
-	flagSharedOpts, sharedOpts := mirror.SharedImageFlags()
-	flagDepTLS, deprecatedTLSVerifyOpt := mirror.DeprecatedTLSVerifyFlags()
-	flagSrcOpts, srcOpts := mirror.ImageSrcFlags(global, sharedOpts, deprecatedTLSVerifyOpt, "src-", "screds")
-	flagDestOpts, destOpts := mirror.ImageDestFlags(global, sharedOpts, deprecatedTLSVerifyOpt, "dest-", "dcreds")
-	flagRetryOpts, retryOpts := mirror.RetryFlags()
-
-	opts := &mirror.CopyOptions{
-		Global:              global,
-		DeprecatedTLSVerify: deprecatedTLSVerifyOpt,
-		SrcImage:            srcOpts,
-		DestImage:           destOpts,
-		RetryOpts:           retryOpts,
-		Function:            string(mirror.DeleteMode),
-	}
+func NewDeleteCommand(log clog.PluggableLoggerInterface, opts *mirror.CopyOptions) *cobra.Command {
+	opts.Function = string(mirror.DeleteMode)
 
 	mkd := MakeDir{}
 	ex := &DeleteSchema{
@@ -78,8 +60,6 @@ func NewDeleteCommand(log clog.PluggableLoggerInterface) *cobra.Command {
 		Use:   "delete",
 		Short: "Deletes all related images and manifests from a remote repository or local cache or both",
 		Run: func(cmd *cobra.Command, args []string) {
-			log.Info(emoji.WavingHandSign + " Hello, welcome to oc-mirror")
-			log.Info(emoji.Gear + "  setting up the environment for you...")
 			err := ex.ValidateDelete(args)
 			if err != nil {
 				log.Error("%v ", err)
@@ -107,26 +87,14 @@ func NewDeleteCommand(log clog.PluggableLoggerInterface) *cobra.Command {
 			}
 		},
 	}
-	cmd.PersistentFlags().StringVarP(&opts.Global.ConfigPath, "config", "c", "", "Path to delete imageset configuration file")
-	cmd.PersistentFlags().StringVarP(&opts.Global.WorkingDir, "workspace", "w", "", "oc-mirror workspace where resources and internal artifacts are generated")
-	cmd.PersistentFlags().StringVar(&opts.Global.CacheDir, "cache-dir", "", "oc-mirror cache directory location. Default is $HOME")
-	cmd.Flags().StringVar(&opts.Global.LogLevel, "loglevel", "info", "Log level one of (info, debug, trace, error)")
 	cmd.Flags().StringVar(&opts.Global.DeleteID, "delete-id", "", "Used to differentiate between versions for files created by the delete functionality")
 	cmd.Flags().StringVar(&opts.Global.DeleteYaml, "delete-yaml-file", "", "If set will use the generated or updated yaml file to delete contents")
 	cmd.Flags().BoolVar(&opts.Global.ForceCacheDelete, "force-cache-delete", false, "Used to force delete  the local cache manifests and blobs")
 	cmd.Flags().Uint16VarP(&opts.Global.Port, "port", "p", 55000, "HTTP port used by oc-mirror's local storage instance")
-	cmd.Flags().BoolVar(&opts.Global.V2, "v2", ex.Opts.Global.V2, "Redirect the flow to oc-mirror v2 - This is Tech Preview, it is still under development and it is not production ready.")
 	cmd.Flags().BoolVar(&opts.Global.DeleteGenerate, "generate", false, "Used to generate the delete yaml for the list of manifests and blobs , used in the step to actually delete from local cahce and remote registry")
 	cmd.Flags().BoolVar(&ex.V1Tags, "delete-v1-images", false, "Used during the migration, along with --generate, in order to target images previously mirrored with oc-mirror v1")
 	cmd.Flags().UintVar(&ex.ParallelImageLayers, "parallel-layers", 10, "Indicates the number of image layers deleted in parallel. Defaults to 10")
 	cmd.Flags().UintVar(&ex.ParallelImages, "parallel-images", 8, "Indicates the number of images deleted in parallel. Defaults to 8")
-	// nolint: errcheck
-	cmd.Flags().MarkHidden("v2")
-	cmd.Flags().AddFlagSet(&flagSharedOpts)
-	cmd.Flags().AddFlagSet(&flagRetryOpts)
-	cmd.Flags().AddFlagSet(&flagDepTLS)
-	cmd.Flags().AddFlagSet(&flagSrcOpts)
-	cmd.Flags().AddFlagSet(&flagDestOpts)
 
 	// hide flags
 	HideFlags(cmd)
@@ -159,10 +127,6 @@ func (o DeleteSchema) ValidateDelete(args []string) error {
 	}
 	if len(args[0]) > 1 && !strings.Contains(args[0], dockerProtocol) {
 		return fmt.Errorf("the destination registry argument must have a docker:// protocol prefix")
-	}
-
-	if os.Getenv(cacheEnvVar) != "" && o.Opts.Global.CacheDir != "" {
-		return fmt.Errorf("either OC_MIRROR_CACHE or --cache-dir can be used but not both")
 	}
 
 	deleteFile := o.Opts.Global.DeleteYaml
@@ -263,19 +227,6 @@ func (o *DeleteSchema) CompleteDelete(args []string) error {
 
 	if o.Opts.Global.ForceCacheDelete && !o.Opts.Global.DeleteGenerate {
 		o.Log.Debug("force-cache-delete flag set, cache deletion will be forced")
-	}
-
-	if o.Opts.Global.CacheDir == "" {
-		// Default to the env var to keep previous behavior
-		o.Opts.Global.CacheDir = os.Getenv(cacheEnvVar)
-	}
-	if o.Opts.Global.CacheDir == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to setup default cache directory: %w", err)
-		}
-		// ensure cache dir exists
-		o.Opts.Global.CacheDir = homeDir
 	}
 
 	err = o.setupLocalStorageDir()
