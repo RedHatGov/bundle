@@ -54,8 +54,11 @@ func (o *FilterCollector) OperatorImageCollector(ctx context.Context) (v2alpha1.
 		// download the operator index image
 		o.Log.Debug(collectorPrefix+"copying operator image %s", op.Catalog)
 
+		if !o.Opts.Global.IsTerminal {
+			o.Log.Debug("Collecting catalog %s", op.Catalog)
+		}
 		// prepare spinner
-		p := mpb.New()
+		p := mpb.New(mpb.ContainerOptional(mpb.WithOutput(io.Discard), !o.Opts.Global.IsTerminal))
 		spinner := p.AddSpinner(
 			1, mpb.BarFillerMiddleware(spinners.PositionSpinnerLeft),
 			mpb.BarWidth(3),
@@ -460,6 +463,9 @@ func (o *FilterCollector) OperatorImageCollector(ctx context.Context) (v2alpha1.
 		}
 		spinner.Increment()
 		p.Wait()
+		if !o.Opts.Global.IsTerminal {
+			o.Log.Info("Collected catalog %s", op.Catalog)
+		}
 	}
 
 	o.Log.Debug(collectorPrefix+"related images length %d ", len(relatedImages))

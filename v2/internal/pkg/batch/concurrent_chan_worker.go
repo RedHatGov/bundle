@@ -3,6 +3,7 @@ package batch
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path"
@@ -71,7 +72,7 @@ func (o *ChannelConcurrentBatch) Worker(ctx context.Context, collectorSchema v2a
 	o.Log.Info(emoji.Pushpin+" images to %s %d ", opts.Function, len(collectorSchema.AllImages))
 
 	total := len(collectorSchema.AllImages)
-	p := mpb.New(mpb.PopCompletedMode())
+	p := mpb.New(mpb.PopCompletedMode(), mpb.ContainerOptional(mpb.WithOutput(io.Discard), !opts.Global.IsTerminal))
 	results := make(chan GoroutineResult, total)
 	progressCh := make(chan int, total)
 	semaphore := make(chan struct{}, o.MaxGoroutines)
@@ -92,6 +93,15 @@ func (o *ChannelConcurrentBatch) Worker(ctx context.Context, collectorSchema v2a
 			default:
 			}
 
+			if !opts.Global.IsTerminal {
+				var dest string
+				if strings.Contains(img.Destination, opts.LocalStorageFQDN) {
+					dest = "cache"
+				} else {
+					dest = hostNamespace(img.Destination)
+				}
+				o.Log.Debug("Batch %s %s to %s", mirrorMsg, path.Base(img.Origin), dest)
+			}
 			sp := newSpinner(img, opts.LocalStorageFQDN, p)
 
 			semaphore <- struct{}{}
@@ -138,14 +148,23 @@ func (o *ChannelConcurrentBatch) Worker(ctx context.Context, collectorSchema v2a
 							switch {
 							case err == nil:
 								spinner.Increment()
+								if !opts.Global.IsTerminal {
+									o.Log.Info("Success %s %s", mirrorMsg, img.Origin)
+								}
 							case img.Type.IsOperator():
 								operators := collectorSchema.CopyImageSchemaMap.OperatorsByImage[img.Origin]
 								bundles := collectorSchema.CopyImageSchemaMap.BundlesByImage[img.Origin]
 								result.err = &mirrorErrorSchema{image: img, err: err, operators: operators, bundles: bundles}
 								spinner.Abort(false)
+								if !opts.Global.IsTerminal {
+									o.Log.Error("Failed %s operator %s", mirrorMsg, img.Origin)
+								}
 							case img.Type.IsRelease() || img.Type.IsAdditionalImage() || img.Type.IsHelmImage():
 								result.err = &mirrorErrorSchema{image: img, err: err}
 								spinner.Abort(false)
+								if !opts.Global.IsTerminal {
+									o.Log.Error("Failed %s image %s", mirrorMsg, img.Origin)
+								}
 							}
 							results <- result
 							break loop
