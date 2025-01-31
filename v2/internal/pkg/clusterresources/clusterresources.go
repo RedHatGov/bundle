@@ -436,8 +436,7 @@ func (o *ClusterResourcesGenerator) generateClusterCatalog(catalogRef string) er
 			Kind:       ofv1.ClusterCatalogKind,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      clusterCatalogName,
-			Namespace: "openshift-marketplace",
+			Name: clusterCatalogName,
 		},
 		Spec: ofv1.ClusterCatalogSpec{
 			Source: ofv1.CatalogSource{

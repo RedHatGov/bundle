@@ -1055,8 +1055,7 @@ func TestClusterCatalogGenerator(t *testing.T) {
 				Kind:       ofv1.ClusterCatalogKind,
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      expectedCCName,
-				Namespace: "openshift-marketplace",
+				Name: expectedCCName,
 			},
 			Spec: ofv1.ClusterCatalogSpec{
 				Source: ofv1.CatalogSource{
@@ -1143,8 +1142,7 @@ func TestClusterCatalogGenerator(t *testing.T) {
 				Kind:       ofv1.ClusterCatalogKind,
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      expectedCCName,
-				Namespace: "openshift-marketplace",
+				Name: expectedCCName,
 			},
 			Spec: ofv1.ClusterCatalogSpec{
 				Source: ofv1.CatalogSource{
