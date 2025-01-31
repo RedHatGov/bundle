@@ -3,6 +3,7 @@ package batch
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -64,7 +65,7 @@ func (o *ConcurrentBatch) Worker(ctx context.Context, collectorSchema v2alpha1.C
 	imgOverallIndex := 0
 	for batchIndex, batch := range batches {
 
-		p := mpb.New()
+		p := mpb.New(mpb.ContainerOptional(mpb.WithOutput(io.Discard), !opts.Global.IsTerminal))
 		total := len(collectorSchema.AllImages)
 		for _, img := range batch.Images.AllImages {
 			imgOverallIndex++
@@ -72,6 +73,9 @@ func (o *ConcurrentBatch) Worker(ctx context.Context, collectorSchema v2alpha1.C
 			imageText := ") " + img.Origin + " "
 			if strings.Contains(img.Destination, opts.LocalStorageFQDN) {
 				imageText += emoji.RightArrow + "  cache "
+			}
+			if !opts.Global.IsTerminal {
+				o.Log.Debug("Batch %s %s", mirrorMsg, img.Origin)
 			}
 			spinner := p.AddSpinner(
 				1, mpb.BarFillerMiddleware(spinners.PositionSpinnerLeft),
@@ -108,6 +112,8 @@ func (o *ConcurrentBatch) Worker(ctx context.Context, collectorSchema v2alpha1.C
 						spinner.Increment()
 					}
 
+					o.Log.Info("Skipped %s", img.Source)
+
 					mu.Unlock()
 					return nil
 				}
@@ -121,21 +127,32 @@ func (o *ConcurrentBatch) Worker(ctx context.Context, collectorSchema v2alpha1.C
 				case err == nil:
 					o.CopiedImages.AllImages = append(o.CopiedImages.AllImages, img)
 					spinner.Increment()
+					var itype string
 					switch img.Type {
 					case v2alpha1.TypeCincinnatiGraph, v2alpha1.TypeOCPRelease, v2alpha1.TypeOCPReleaseContent:
 						o.CopiedImages.TotalReleaseImages++
+						itype = "release"
 					case v2alpha1.TypeGeneric:
 						o.CopiedImages.TotalAdditionalImages++
+						itype = "generic"
 					case v2alpha1.TypeOperatorBundle, v2alpha1.TypeOperatorCatalog, v2alpha1.TypeOperatorRelatedImage:
 						o.CopiedImages.TotalOperatorImages++
+						itype = "operator"
 					case v2alpha1.TypeHelmImage:
 						o.CopiedImages.TotalHelmImages++
+						itype = "helm"
+					}
+					if !opts.Global.IsTerminal {
+						o.Log.Info("Success %s %s image %s", mirrorMsg, itype, img.Origin)
 					}
 				case img.Type.IsOperator():
 					operators := collectorSchema.CopyImageSchemaMap.OperatorsByImage[img.Origin]
 					bundles := collectorSchema.CopyImageSchemaMap.BundlesByImage[img.Origin]
 					errArray = append(errArray, mirrorErrorSchema{image: img, err: err, operators: operators, bundles: bundles})
 					spinner.Abort(false)
+					if !opts.Global.IsTerminal {
+						o.Log.Error("Failed %s operator %s", mirrorMsg, img.Origin)
+					}
 				case img.Type.IsRelease():
 					// error on release image, save the errArray and immediately return `UnsafeError` to caller
 					currentMirrorError := mirrorErrorSchema{image: img, err: err}
@@ -146,6 +163,9 @@ func (o *ConcurrentBatch) Worker(ctx context.Context, collectorSchema v2alpha1.C
 				case img.Type.IsAdditionalImage() || img.Type.IsHelmImage():
 					errArray = append(errArray, mirrorErrorSchema{image: img, err: err})
 					spinner.Abort(false)
+					if !opts.Global.IsTerminal {
+						o.Log.Error("Failed %s image %s", mirrorMsg, img.Origin)
+					}
 				}
 				mu.Unlock()
 				return nil

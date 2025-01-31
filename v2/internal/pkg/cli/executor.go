@@ -19,6 +19,7 @@ import (
 	"text/template"
 	"time"
 
+	"golang.org/x/term"
 	"k8s.io/kubectl/pkg/util/templates"
 
 	"github.com/distribution/distribution/v3/configuration"
@@ -154,6 +155,7 @@ func NewMirrorCmd(log clog.PluggableLoggerInterface) *cobra.Command {
 
 	global := &mirror.GlobalOptions{
 		SecurePolicy: false,
+		IsTerminal:   term.IsTerminal(int(os.Stdout.Fd())),
 	}
 
 	flagSharedOpts, sharedOpts := mirror.SharedImageFlags()
@@ -1157,7 +1159,10 @@ func (o *ExecutorSchema) RebuildCatalogs(ctx context.Context, operatorImgs v2alp
 					// CLID-275: this is the ref to the already rebuilt catalog, which needs to be mirrored to destination.
 					continue
 				}
-				p := mpb.New()
+				if !o.Opts.Global.IsTerminal {
+					o.Log.Info("Rebuilding catalog %s", copyImage.Origin)
+				}
+				p := mpb.New(mpb.ContainerOptional(mpb.WithOutput(io.Discard), !o.Opts.Global.IsTerminal))
 				spinner := p.AddSpinner(
 					1, mpb.BarFillerMiddleware(spinners.PositionSpinnerLeft),
 					mpb.BarWidth(3),
