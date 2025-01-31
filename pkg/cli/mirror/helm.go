@@ -115,6 +115,7 @@ func (h *HelmOptions) PullCharts(ctx context.Context, cfg v1alpha2.ImageSetConfi
 			img, err := findImages(path, chart.ImagePaths...)
 			if err != nil {
 				errs = append(errs, err)
+				klog.V(2).Infof("error finding images for chart %v: %v", ref, err)
 				// return nil, err
 			}
 			for _, image := range img {
@@ -224,6 +225,11 @@ func render(ch *helmchart.Chart) (string, error) {
 		Name:      "NAME",
 		Namespace: "RELEASE-NAMESPACE",
 	}
+
+	if err := chartutil.ProcessDependencies(ch, valueOpts); err != nil {
+		return "", fmt.Errorf("error processing dependencies: %v", err)
+	}
+
 	valuesToRender, err := chartutil.ToRenderValues(ch, valueOpts, relOps, caps)
 	if err != nil {
 		return "", fmt.Errorf("error rendering values: %v", err)
